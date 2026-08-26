@@ -2,5 +2,5 @@ ports:
 - port: 1337
   onOpen: open-preview
 tasks:
-- init: npm install
-  command: node example/server.js
+- init: go build ./...
+  command: go run ./example

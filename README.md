@@ -97,18 +97,18 @@ Lets get stuck in with a simple example.
 
 To play around with the example you can open it in Gitpod (requires OAuth with GitHub).
 
-[![Open in Gitpod](https://gitpod.io/button/open-in-gitpod.svg)](https://gitpod.io#https://github.com/dwyl/learn-json-web-tokens/blob/master/example/lib/helpers.js)
+[![Open in Gitpod](https://gitpod.io/button/open-in-gitpod.svg)](https://gitpod.io#https://github.com/dwyl/learn-json-web-tokens/blob/master/example/lib/helpers.go)
 
 ## Server
 
-Using the *core* **node.js http** server we create 4 endpoints in **/example/server.js**:
+Using the *core* **net/http** server we create 4 endpoints in **/example/server.go**:
 
 1. **/home** : home page (not essential but its where our **login** form is.)
 2. **/auth** : *authenticate* the visitor (returns error + login form if failed)
 3. **/private** : our restricted content - ***login required*** (valid session token) to see this page
 4. **/logout** : invalidates the token and logs out the user (prevent from re-using old token)
 
-We have *deliberately* made **server.js** as _simple as possible_ for:
+We have *deliberately* made **server.go** as _simple as possible_ for:
 
 + Readability
 + Maintainability
@@ -118,37 +118,34 @@ We have *deliberately* made **server.js** as _simple as possible_ for:
 
 ## Helper Methods
 
-All the helper methods are kept in **/example/lib/helpers.js**
+All the helper methods are kept in **/example/lib/helpers.go**
 The two most interesting/relevant methods are (simplified versions shown here):
 
-```javascript
+```go
 // generate the JWT
-function generateToken(req){
-  return jwt.sign({
-    auth:  'magic',
-    agent: req.headers['user-agent'],
-    exp:   Math.floor(new Date().getTime()/1000) + 7*24*60*60; // Note: in seconds!
-  }, secret);  // secret is defined in the environment variable JWT_SECRET
+func generateToken(req Request) (string, error) {
+	return jsonwebtoken.Sign([]jsonwebtoken.Field{
+		{Key: "auth", Value: "magic"},
+		{Key: "agent", Value: req.Header("user-agent")},
+	}, secret, jsonwebtoken.Options{ExpiresIn: "7d"}) // secret is defined in the environment variable JWT_SECRET
 }
 ```
 Which ***generates*** our JWT token when the user authenticates (this is then sent back to the client in the **Authorization** header for use in subsequent requests),
 
 and
 
-```javascript
+```go
 // validate the token supplied in request header
-function validate(req, res) {
-  var token = req.headers.authorization;
-  try {
-    var decoded = jwt.verify(token, secret);
-  } catch (e) {
-    return authFail(res);
-  }
-  if(!decoded || decoded.auth !== 'magic') {
-    return authFail(res);
-  } else {
-    return privado(res, token);
-  }
+func validate(req Request, res Response) Response {
+	token := req.Header("authorization")
+	decoded, err := jsonwebtoken.Verify(token, secret)
+	if err != nil {
+		return authFail(res)
+	}
+	if decoded["auth"] != "magic" {
+		return authFail(res)
+	}
+	return privado(res, token)
 }
 ```
 
@@ -168,12 +165,18 @@ You may have noticed the [![Build Status][travis-image]][travis-url] badge at th
 This is a sign the author(s) are not just *cobbling* code together.
 The tests for both the server routes and helper functions are in: **/example/test**
 
-1. /example/test/**functional.js** - *exercises* all the **helper methods** we created in /example/lib/**helpers.js**
+1. /example/test/**functional_test.go** - *exercises* all the **helper methods** we created in /example/lib/**helpers.go**
 [![Test Coverage](https://codeclimate.com/github/dwyl/learn-json-web-tokens/badges/coverage.svg)](https://codeclimate.com/github/dwyl/learn-json-web-tokens)
-2. /example/test/**integration.js** - simulates the requests a *user* would send to the server and tests the *responses*.
+2. /example/test/**integration_test.go** - simulates the requests a *user* would send to the server and tests the *responses*.
+
+Run them with:
+
+```sh
+go test ./...
+```
 
 Please *read* through the tests and *tell us* if anything is unclear!
-**Note**: We wrote a basic "***mock***" of the http req/res objects see: /example/test/**mock.js**
+**Note**: We wrote a basic "***mock***" of the http req/res objects see: /example/test/**mock.go**
 Confused/curious about Mocking? Read [When to Mock (by "Uncle Bob")](https://blog.8thlight.com/uncle-bob/2014/05/10/WhenToMock.html)
 
 - - -
@@ -314,9 +317,26 @@ retrieval system (e.g: Redis or SQLite for mobile apps) and send the token back 
 
 Since JSON Web Tokens (JWT) do not have to be signed using [***asymmetric encryption***](https://en.wikipedia.org/wiki/Public-key_cryptography) you do not *have* to generate your secret key using ***ssh-keygen***. You can just as easily use a ***strong password*** e.g: https://www.grc.com/passwords.htm provided it's ***long and random***. The chance of collision (and thus someone being able to modify the payload, adding or modifying claims, and create a valid signature) is pretty low. And if you join two of those **Strong Passwords** (*strings*) together, you'll have a 128bit ASCII String. So the chances of collision are less than the [number of *atoms* in the universe](https://en.wikipedia.org/wiki/Observable_universe#Matter_content_.E2.80.94_number_of_atoms).
 
-To quickly and easily create a secret key using Node's crypto library, run this command.
+To quickly and easily create a secret key using Go's crypto library, save this as
+`secret.go` and run `go run secret.go`.
 
-    node -e "console.log(require('crypto').randomBytes(32).toString('hex'));"
+```go
+package main
+
+import (
+	"crypto/rand"
+	"encoding/hex"
+	"fmt"
+)
+
+func main() {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		panic(err)
+	}
+	fmt.Println(hex.EncodeToString(b))
+}
+```
 
 In other words, you *can* use an ***RSA key***, but you don't *have to*.
 
@@ -325,27 +345,24 @@ The main thing you need to remember is: don't share the key with people who are 
 
 
 
-## Which Node.js Module?
+## Which Go Package?
 
-A search for "**JSON Web Token**" on NPM:
-https://www.npmjs.com/search?q=json+web+token yields ***many*** results!
+A search for "**JSON Web Token**" on pkg.go.dev:
+https://pkg.go.dev/search?q=json+web+token yields ***many*** results!
 
-![npm search for json web token](https://i.imgur.com/ZLN3LlW.png)
+### This Example
 
-### Building a Web App with Hapi.js?
+So that the tutorial stays *readable* and has **zero dependencies** to install,
+the signing and verification used here live in `/internal/jsonwebtoken`.
+It implements the **HS256** subset this example needs and nothing more,
+so you can read the whole thing in one sitting.
 
-In our efforts to simplify using JWTs in Hapi.js apps,
-we wrote this module: https://github.com/dwyl/hapi-auth-jwt2
+### General Use in *Other* Go Projects
 
-
-### General Use in *Other* Node.js Projects
-
-We *highly* recommend using the **jsonwebtoken** module
-made by our friends [@auth0](https://twitter.com/auth0)
-([the identity/authentication experts](https://auth0.com/about)):
-- https://github.com/auth0/node-jsonwebtoken
-Which in turn uses:
-https://github.com/brianloveswords/node-jws
+For production code we *highly* recommend a maintained library rather than
+rolling your own:
+- https://github.com/golang-jwt/jwt
+- https://github.com/go-jose/go-jose
 [![NPM][jsonwebtoken-icon] ][jsonwebtoken-url]
 
 Another great option is: https://github.com/joaquimserafim/json-web-token
